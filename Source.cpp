@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <time.h>
+#include <stdio.h>
 
 using namespace std;
 const double eps = 0.000001;
@@ -14,6 +15,26 @@ struct crsmtx
 	double* values;
 	int* cols;
 	int* pointer;
+
+	crsmtx(crsmtx& mtx) 
+	{
+		this->n = mtx.n;
+		this->m = mtx.m;
+		this->notzeros = mtx.notzeros;
+		this->cols = new int[this->notzeros];
+		this->values = new double[this->notzeros];
+		this->pointer = new int[this->n + 1];
+		for (int i = 0; i < this->notzeros; ++i)
+		{
+			this->cols[i] = mtx.cols[i];
+			this->values[i] = mtx.values[i];
+		}
+		for (int i = 0; i < n + 1; ++i)
+		{
+			this->pointer[i] = mtx.pointer[i];
+		}
+	}
+	crsmtx() {}
 };
 
 void initmtx(int n, int m, int nz, crsmtx &mtx) 
@@ -68,6 +89,47 @@ void setmtxfromfile(string file, crsmtx &mtx)
 	}
 	fin.close();
 
+
+}
+
+void setmtxfromfileFast(char* file, crsmtx &mtx)
+{
+	double a;
+	int n, m, nz;
+	FILE* f;
+	char c;
+	
+	f = fopen(file, "r");
+	//ifstream fin;
+	//fin.open(file);
+	//fin >> n >> m >> nz;
+	fscanf(f, "%d %d %d", &n, &m, &nz);
+	initmtx(n, m, nz, mtx);
+	int cnt = 0;
+	mtx.pointer[0] = 0;
+	//fscanf(f, "%c", &c);
+	for (int i = 0; i < n; ++i)
+	{
+		for (int j = 0; j < m; ++j)
+		{
+			///fin >> a;
+			fscanf(f, "%lf", &a);
+			//fscanf(f, "%c", &c);
+
+			if (abs(a) > eps)
+			{
+				mtx.values[cnt] = a;
+				mtx.cols[cnt] = j;
+				cnt++;
+			}
+			
+
+		}
+		//fscanf(f, "%c", &c);
+		mtx.pointer[i + 1] = cnt;
+	}
+	//fin.close();
+	fclose(f);
 
 }
 
@@ -305,14 +367,162 @@ void printmtx(crsmtx mtx)
 	}
 }
 
+void getMtxTemplate(crsmtx a, crsmtx b, crsmtx &c) 
+{
+	int **templ = new int*[a.n];
+	int nz2 = 0;
+	for (int i = 0; i < a.n; ++i)
+	{
+		int *x = new int[a.m];
+		templ[i] = new int[a.m];
+
+		memset(x, 0, sizeof(int)*a.m);
+		memset(templ[i], sizeof(int) * 0, a.m);
+
+		for (int j = a.pointer[i]; j < a.pointer[i + 1]; ++j) 
+		{
+				x[a.cols[j]] = 1;
+		}
+
+		for (int j = 0; j < b.n; ++j) 
+		{
+			int nz = 0;
+
+			for (int q = b.pointer[j]; q < b.pointer[j + 1]; ++q)
+			{
+				if (x[b.cols[q]] == 1) 
+				{
+					nz++;
+					break;
+				}
+			}
+			if (nz > 0)
+			{
+				templ[i][j] = 1;
+				nz2++;
+			}
+				
+		}
+		delete[] x;
+	}
+	initmtx(a.n, a.m, nz2, c);
+	
+	int cnt = 0;
+	
+	
+	for (int i = 0; i < a.n; ++i) 
+	{
+		for (int j = 0; j < a.m; ++j) 
+		{
+			if (templ[i][j] >  0)
+			{
+				c.cols[cnt] = j;
+				c.values[cnt] = 1;
+				cnt++;
+			}
+			
+		}
+		c.pointer[i + 1] = cnt;
+		//delete[] templ[i];
+	}
+
+	if (cnt != nz2) cout << "fail!" << endl;
+
+	for (int i = 0; i < a.n; ++i)
+		delete templ[i];
+
+	delete[] templ;
+
+}
+
+void mtxMultiplyNew(crsmtx a, crsmtx b, crsmtx &c, double& time) 
+{
+	clock_t start = clock();
+
+	for (int i = 0; i < c.n; ++i) 
+	{
+		int *x = new int[a.m];
+		memset(x, -1, sizeof(int)*a.m);
+
+		for (int j = a.pointer[i]; j < a.pointer[i + 1]; ++j)
+		{
+			x[a.cols[j]] = j;
+		}
+
+		for (int j = c.pointer[i]; j < c.pointer[i + 1]; ++j) 
+		{
+			double sum = 0.0;
+
+			int col = c.cols[j];
+			for (int q = b.pointer[col]; q < b.pointer[col + 1]; ++q)
+			{
+				int ind = b.cols[q];
+				if (x[ind] != -1)
+					sum += a.values[x[ind]] * b.values[q];
+			}
+			c.values[j] = sum;
+		}
+		delete[] x;
+	
+	}
+
+	clock_t finish = clock();
+	time = (double)(finish - start) / CLOCKS_PER_SEC;
+
+}
+
+void mtxMultiplyNewParallel(crsmtx a, crsmtx b, crsmtx &c, double& time)
+{
+	clock_t start = clock();
+
+#pragma omp parallel for
+	for (int i = 0; i < c.n; ++i)
+	{
+		int *x = new int[a.m];
+		memset(x, -1, sizeof(int)*a.m);
+
+		for (int j = a.pointer[i]; j < a.pointer[i + 1]; ++j)
+		{
+			x[a.cols[j]] = j;
+		}
+
+		for (int j = c.pointer[i]; j < c.pointer[i + 1]; ++j)
+		{
+			double sum = 0.0;
+
+			int col = c.cols[j];
+			for (int q = b.pointer[col]; q < b.pointer[col + 1]; ++q)
+			{
+				int ind = b.cols[q];
+				if (x[ind] != -1)
+					sum += a.values[x[ind]] * b.values[q];
+			}
+			c.values[j] = sum;
+		}
+		delete[] x;
+
+	}
+
+	clock_t finish = clock();
+	time = (double)(finish - start) / CLOCKS_PER_SEC;
+
+}
+
 int main() 
 {
 	crsmtx a;
 	crsmtx b;
 	crsmtx bt;
-	setmtxfromfile("bigA.txt", a);
-	setmtxfromfile("bigB.txt", b);
-	crsmtx c, cp;
+	//setmtxfromfile("Text.txt", a);
+	//setmtxfromfile("Text.txt", b);
+
+	setmtxfromfileFast("bigA.txt", a);
+	setmtxfromfileFast("bigB.txt", b);
+
+
+	cout << endl;
+
+	crsmtx c;
 	transposemtx(b, bt);
 	double time1, time2;
 
@@ -321,37 +531,23 @@ int main()
 
 
 
-	mtxmultiply(a, bt, c, time1);
-	mtxmultiplyparallel(a, bt, cp, time2);
+	//mtxmultiply(a, bt, c, time1);
+	//mtxmultiplyparallel(a, bt, cp, time2);
 
 
-	/*for (int i = 0; i < c.notzeros; ++i) 
-	{
-		cout << c.values[i] << " ";
-	}
-	cout << endl;
-	for (int i = 0; i < c.notzeros; ++i)
-	{
-		cout << c.cols[i] << " ";
-	}
-	cout << endl;
+	getMtxTemplate(a, bt, c);
+	//getMtxTemplate(a, bt, cp);
+	
+	crsmtx cp(c);
 
-	for (int i = 0; i < cp.notzeros; ++i)
-	{
-		cout << cp.values[i] << " ";
-	}
-	cout << endl;
+	cout << "gets template!" << endl;
 
-	for (int i = 0; i < c.notzeros; ++i)
-	{
-		cout << cp.cols[i] << " ";
-	}
-	cout << endl;*/
+	
 
-	//printmtx(c);
-	////cout << endl;
-	//printmtx(cp);
+	mtxMultiplyNew(a, bt, c, time1);
+	mtxMultiplyNewParallel(a, bt, cp, time2);
 
+	
 
 	double diff = -1;
 	//comparemtx(c, cp, diff);
