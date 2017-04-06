@@ -5,6 +5,7 @@
 #include <string>
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 using namespace std;
 const double eps = 0.000001;
@@ -89,6 +90,47 @@ void setmtxfromfile(string file, crsmtx &mtx)
 	}
 	fin.close();
 
+
+}
+
+void setRandomMtx(int n, int m, crsmtx &mtx)
+{
+	double a;
+	vector<double> vals;
+	vector<int> cols;
+	vector<int> pointer(n + 1, 0);
+	//initmtx(n, m, nz, mtx);
+	int cnt = 0;
+	//mtx.pointer[0] = 0;
+	srand(time(NULL));
+	double p;
+	for (int i = 0; i < n; ++i)
+	{
+		for (int j = 0; j < m; ++j)
+		{
+			p = rand() % 100 + 1;
+			if (p <= 5) 
+			{
+				vals.push_back((double)rand() / RAND_MAX * 100);
+				cols.push_back(j);
+				cnt++;
+			}
+		}
+		pointer[i + 1] = cnt;
+	}
+
+	initmtx(n, m, vals.size(), mtx);
+
+	for (int i = 0; i < vals.size(); ++i) 
+	{
+		mtx.values[i] = vals[i];
+		mtx.cols[i] = cols[i];
+	}
+
+	for (int i = 0; i < pointer.size(); ++i)
+	{
+		mtx.pointer[i] = pointer[i];
+	}
 
 }
 
@@ -516,11 +558,14 @@ int main()
 	//setmtxfromfile("Text.txt", a);
 	//setmtxfromfile("Text.txt", b);
 
-	setmtxfromfileFast("bigA.txt", a);
-	setmtxfromfileFast("bigB.txt", b);
+	//setmtxfromfileFast("bigA.txt", a);
+	//setmtxfromfileFast("bigB.txt", b);
 
 
-	cout << endl;
+	setRandomMtx(10000, 10000, a);
+	setRandomMtx(10000, 10000, b);
+
+
 
 	crsmtx c;
 	transposemtx(b, bt);
